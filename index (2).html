@@ -1,0 +1,594 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <!-- Login Section -->
+    <div id="loginSection" class="flex items-center justify-center min-h-screen">
+        <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
+            <h2 class="text-2xl font-semibold mb-4 text-center">Login</h2>
+            <div class="grid grid-cols-1 gap-4">
+                <input id="loginUsername" type="text" placeholder="Username" class="p-2 border rounded">
+                <input id="loginPassword" type="password" placeholder="Password" class="p-2 border rounded">
+                <button id="loginBtn" class="bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Login</button>
+            </div>
+            <p id="loginError" class="text-red-600 mt-2 hidden">Invalid username or password.</p>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="hidden container mx-auto p-4">
+        <h1 class="text-3xl font-bold text-center mb-6">Stock Management System</h1>
+
+        <!-- Navigation Tabs -->
+        <div class="flex justify-center mb-6">
+            <button id="dashboardTab" class="px-4 py-2 bg-blue-600 text-white rounded-l-lg hover:bg-blue-700">Dashboard</button>
+            <button id="addProductTab" class="px-4 py-2 bg-gray-600 text-white hover:bg-gray-700">Add Product</button>
+            <button id="sellProductTab" class="px-4 py-2 bg-gray-600 text-white hover:bg-gray-700">Sell Product</button>
+            <button id="salesRecordsTab" class="px-4 py-2 bg-gray-600 text-white hover:bg-gray-700">Sales Records</button>
+            <button id="profileTab" class="px-4 py-2 bg-gray-600 text-white rounded-r-lg hover:bg-gray-700">Profile</button>
+        </div>
+
+        <!-- Dashboard Section -->
+        <div id="dashboard" class="hidden">
+            <h2 class="text-2xl font-semibold mb-4">Stock Dashboard</h2>
+            <button id="downloadStockBtn" class="mb-4 bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Download Stock Data (CSV)</button>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white shadow-md rounded-lg">
+                    <thead>
+                        <tr class="bg-blue-600 text-white">
+                            <th class="py-2 px-4">SL</th>
+                            <th class="py-2 px-4">Code</th>
+                            <th class="py-2 px-4">Product Name</th>
+                            <th class="py-2 px-4">Unit</th>
+                            <th class="py-2 px-4">TP</th>
+                            <th class="py-2 px-4">Saleable Stock Qty.</th>
+                            <th class="py-2 px-4">Damage Stock Qty.</th>
+                            <th class="py-2 px-4">Free Qty.</th>
+                            <th class="py-2 px-4">Saleable Amount</th>
+                            <th class="py-2 px-4">Damage Amount</th>
+                            <th class="py-2 px-4">Total Amount</th>
+                            <th class="py-2 px-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stockTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Add Product Section -->
+        <div id="addProduct" class="hidden">
+            <h2 class="text-2xl font-semibold mb-4">Add New Product</h2>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="grid grid-cols-1 gap-4">
+                    <input id="productCode" type="text" placeholder="Product Code" class="p-2 border rounded">
+                    <input id="productName" type="text" placeholder="Product Name" class="p-2 border rounded">
+                    <input id="productUnit" type="text" placeholder="Unit (e.g., pcs, kg)" class="p-2 border rounded">
+                    <input id="productTP" type="number" placeholder="Trade Price (TP)" class="p-2 border rounded">
+                    <input id="saleableQty" type="number" placeholder="Saleable Stock Quantity" class="p-2 border rounded">
+                    <input id="damageQty" type="number" placeholder="Damage Stock Quantity" class="p-2 border rounded">
+                    <input id="freeQty" type="number" placeholder="Free Quantity" class="p-2 border rounded">
+                    <button id="addProductBtn" class="bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Add Product</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sell Product Section -->
+        <div id="sellProduct" class="hidden">
+            <h2 class="text-2xl font-semibold mb-4">Sell Product</h2>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <div class="grid grid-cols-1 gap-4">
+                    <input id="searchProductCode" type="text" placeholder="Search by Product Code" class="p-2 border rounded">
+                    <select id="sellProductCode" class="p-2 border rounded">
+                        <option value="">Select Product</option>
+                    </select>
+                    <input id="sellQty" type="number" placeholder="Quantity to Sell" class="p-2 border rounded">
+                    <button id="sellProductBtn" class="bg-green-600 text-white p-2 rounded hover:bg-green-700">Sell Product</button>
+                </div>
+            </div>
+            <h3 class="text-xl font-semibold mb-4">Available Products for Sale</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white shadow-md rounded-lg">
+                    <thead>
+                        <tr class="bg-blue-600 text-white">
+                            <th class="py-2 px-4">SL</th>
+                            <th class="py-2 px-4">Code</th>
+                            <th class="py-2 px-4">Product Name</th>
+                            <th class="py-2 px-4">Unit</th>
+                            <th class="py-2 px-4">TP</th>
+                            <th class="py-2 px-4">Saleable Stock Qty.</th>
+                            <th class="py-2 px-4">Damage Stock Qty.</th>
+                            <th class="py-2 px-4">Free Qty.</th>
+                            <th class="py-2 px-4">Saleable Amount</th>
+                            <th class="py-2 px-4">Damage Amount</th>
+                            <th class="py-2 px-4">Total Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sellTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Sales Records Section -->
+        <div id="salesRecords" class="hidden">
+            <h2 class="text-2xl font-semibold mb-4">Sales Records</h2>
+            <button id="downloadSalesBtn" class="mb-4 bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Download Sales Data (CSV)</button>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white shadow-md rounded-lg">
+                    <thead>
+                        <tr class="bg-blue-600 text-white">
+                            <th class="py-2 px-4">SL</th>
+                            <th class="py-2 px-4">Product Code</th>
+                            <th class="py-2 px-4">Product Name</th>
+                            <th class="py-2 px-4">Quantity Sold</th>
+                            <th class="py-2 px-4">Sale Amount</th>
+                            <th class="py-2 px-4">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Profile Section -->
+        <div id="profile" class="hidden">
+            <h2 class="text-2xl font-semibold mb-4">Profile</h2>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="grid grid-cols-1 gap-4">
+                    <input id="newUsername" type="text" placeholder="New Username" class="p-2 border rounded">
+                    <input id="newPassword" type="password" placeholder="New Password" class="p-2 border rounded">
+                    <button id="updateProfileBtn" class="bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Update Profile</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Product Modal -->
+        <div id="editProductModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+            <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
+                <h3 class="text-xl font-semibold mb-4">Edit Product</h3>
+                <div class="grid grid-cols-1 gap-4">
+                    <input id="editProductCode" type="text" placeholder="Product Code" class="p-2 border rounded" readonly>
+                    <input id="editProductName" type="text" placeholder="Product Name" class="p-2 border rounded">
+                    <input id="editProductUnit" type="text" placeholder="Unit (e.g., pcs, kg)" class="p-2 border rounded">
+                    <input id="editProductTP" type="number" placeholder="Trade Price (TP)" class="p-2 border rounded">
+                    <input id="editSaleableQty" type="number" placeholder="Saleable Stock Quantity" class="p-2 border rounded">
+                    <input id="editDamageQty" type="number" placeholder="Damage Stock Quantity" class="p-2 border rounded">
+                    <input id="editFreeQty" type="number" placeholder="Free Quantity" class="p-2 border rounded">
+                    <div class="flex justify-end gap-2">
+                        <button id="saveEditBtn" class="bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Save</button>
+                        <button id="cancelEditBtn" class="bg-gray-600 text-white p-2 rounded hover:bg-gray-700">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize credentials
+        let credentials = JSON.parse(localStorage.getItem('credentials')) || { username: 'admin', password: '0189' };
+        let isLoggedIn = false;
+
+        // Load data from localStorage
+        let products = JSON.parse(localStorage.getItem('products')) || [];
+        let salesRecords = JSON.parse(localStorage.getItem('salesRecords')) || [];
+
+        // Check login status
+        function checkLogin() {
+            if (!isLoggedIn) {
+                document.getElementById('loginSection').classList.remove('hidden');
+                document.getElementById('mainApp').classList.add('hidden');
+            } else {
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+            }
+        }
+
+        // Login functionality
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorMsg = document.getElementById('loginError');
+
+            if (username === credentials.username && password === credentials.password) {
+                isLoggedIn = true;
+                checkLogin();
+                updateDashboard();
+                updateProductDropdown();
+                updateSellTable();
+                updateSalesRecords();
+                document.getElementById('loginUsername').value = '';
+                document.getElementById('loginPassword').value = '';
+                errorMsg.classList.add('hidden');
+            } else {
+                errorMsg.classList.remove('hidden');
+            }
+        });
+
+        // Tab switching logic
+        const tabs = {
+            dashboard: document.getElementById('dashboard'),
+            addProduct: document.getElementById('addProduct'),
+            sellProduct: document.getElementById('sellProduct'),
+            salesRecords: document.getElementById('salesRecords'),
+            profile: document.getElementById('profile'),
+        };
+        const tabButtons = {
+            dashboard: document.getElementById('dashboardTab'),
+            addProduct: document.getElementById('addProductTab'),
+            sellProduct: document.getElementById('sellProductTab'),
+            salesRecords: document.getElementById('salesRecordsTab'),
+            profile: document.getElementById('profileTab'),
+        };
+
+        function showTab(tabName) {
+            Object.values(tabs).forEach(tab => tab.classList.add('hidden'));
+            Object.values(tabButtons).forEach(btn => btn.classList.remove('bg-blue-600'));
+            Object.values(tabButtons).forEach(btn => btn.classList.add('bg-gray-600'));
+            tabs[tabName].classList.remove('hidden');
+            tabButtons[tabName].classList.remove('bg-gray-600');
+            tabButtons[tabName].classList.add('bg-blue-600');
+        }
+
+        tabButtons.dashboard.addEventListener('click', () => showTab('dashboard'));
+        tabButtons.addProduct.addEventListener('click', () => showTab('addProduct'));
+        tabButtons.sellProduct.addEventListener('click', () => showTab('sellProduct'));
+        tabButtons.salesRecords.addEventListener('click', () => showTab('salesRecords'));
+        tabButtons.profile.addEventListener('click', () => showTab('profile'));
+
+        // Update dashboard table
+        function updateDashboard() {
+            const tableBody = document.getElementById('stockTableBody');
+            tableBody.innerHTML = '';
+            products.forEach((product, index) => {
+                const saleableAmount = product.saleableQty * product.tp;
+                const damageAmount = product.damageQty * product.tp;
+                const totalAmount = saleableAmount + damageAmount;
+                const row = `
+                    <tr class="border-b">
+                        <td class="py-2 px-4">${index + 1}</td>
+                        <td class="py-2 px-4">${product.code}</td>
+                        <td class="py-2 px-4">${product.name}</td>
+                        <td class="py-2 px-4">${product.unit}</td>
+                        <td class="py-2 px-4">${product.tp}</td>
+                        <td class="py-2 px-4">${product.saleableQty}</td>
+                        <td class="py-2 px-4">${product.damageQty}</td>
+                        <td class="py-2 px-4">${product.freeQty}</td>
+                        <td class="py-2 px-4">${saleableAmount.toFixed(2)}</td>
+                        <td class="py-2 px-4">${damageAmount.toFixed(2)}</td>
+                        <td class="py-2 px-4">${totalAmount.toFixed(2)}</td>
+                        <td class="py-2 px-4 flex gap-2">
+                            <button class="edit-btn bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-700" data-code="${product.code}">Edit</button>
+                            <button class="delete-btn bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700" data-code="${product.code}">Delete</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+
+            // Attach event listeners for edit and delete buttons
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.removeEventListener('click', handleEditClick); // Remove previous listeners to prevent duplicates
+                btn.addEventListener('click', handleEditClick);
+            });
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.removeEventListener('click', handleDeleteClick); // Remove previous listeners to prevent duplicates
+                btn.addEventListener('click', handleDeleteClick);
+            });
+        }
+
+        // Event handler for edit button
+        function handleEditClick(event) {
+            const code = event.target.dataset.code;
+            openEditModal(code);
+        }
+
+        // Event handler for delete button
+        function handleDeleteClick(event) {
+            const code = event.target.dataset.code;
+            deleteProduct(code);
+        }
+
+        // Update sell products table with search filter
+        function updateSellTable(searchTerm = '') {
+            const tableBody = document.getElementById('sellTableBody');
+            tableBody.innerHTML = '';
+            let sl = 1;
+            const filteredProducts = products.filter(product => 
+                product.saleableQty > 0 && 
+                (searchTerm === '' || product.code.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+            filteredProducts.forEach(product => {
+                const saleableAmount = product.saleableQty * product.tp;
+                const damageAmount = product.damageQty * product.tp;
+                const totalAmount = saleableAmount + damageAmount;
+                const row = `
+                    <tr class="border-b">
+                        <td class="py-2 px-4">${sl++}</td>
+                        <td class="py-2 px-4">${product.code}</td>
+                        <td class="py-2 px-4">${product.name}</td>
+                        <td class="py-2 px-4">${product.unit}</td>
+                        <td class="py-2 px-4">${product.tp}</td>
+                        <td class="py-2 px-4">${product.saleableQty}</td>
+                        <td class="py-2 px-4">${product.damageQty}</td>
+                        <td class="py-2 px-4">${product.freeQty}</td>
+                        <td class="py-2 px-4">${saleableAmount.toFixed(2)}</td>
+                        <td class="py-2 px-4">${damageAmount.toFixed(2)}</td>
+                        <td class="py-2 px-4">${totalAmount.toFixed(2)}</td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        // Update product dropdown for selling
+        function updateProductDropdown() {
+            const dropdown = document.getElementById('sellProductCode');
+            dropdown.innerHTML = '<option value="">Select Product</option>';
+            products.forEach(product => {
+                if (product.saleableQty > 0) {
+                    const option = document.createElement('option');
+                    option.value = product.code;
+                    option.textContent = `${product.name} (${product.code})`;
+                    dropdown.appendChild(option);
+                }
+            });
+        }
+
+        // Update sales records table
+        function updateSalesRecords() {
+            const tableBody = document.getElementById('salesTableBody');
+            tableBody.innerHTML = '';
+            salesRecords.forEach((sale, index) => {
+                const row = `
+                    <tr class="border-b">
+                        <td class="py-2 px-4">${index + 1}</td>
+                        <td class="py-2 px-4">${sale.code}</td>
+                        <td class="py-2 px-4">${sale.name}</td>
+                        <td class="py-2 px-4">${sale.quantity}</td>
+                        <td class="py-2 px-4">${sale.saleAmount.toFixed(2)}</td>
+                        <td class="py-2 px-4">${sale.date}</td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        // Download data as CSV
+        function downloadCSV(data, filename, headers) {
+            let csv = headers.join(',') + '\n';
+            data.forEach(row => {
+                csv += row.join(',') + '\n';
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Download stock data
+        document.getElementById('downloadStockBtn').addEventListener('click', () => {
+            const headers = ['SL', 'Code', 'Product Name', 'Unit', 'TP', 'Saleable Stock Qty.', 'Damage Stock Qty.', 'Free Qty.', 'Saleable Amount', 'Damage Amount', 'Total Amount'];
+            const data = products.map((product, index) => {
+                const saleableAmount = product.saleableQty * product.tp;
+                const damageAmount = product.damageQty * product.tp;
+                const totalAmount = saleableAmount + damageAmount;
+                return [
+                    index + 1,
+                    product.code,
+                    product.name,
+                    product.unit,
+                    product.tp,
+                    product.saleableQty,
+                    product.damageQty,
+                    product.freeQty,
+                    saleableAmount.toFixed(2),
+                    damageAmount.toFixed(2),
+                    totalAmount.toFixed(2)
+                ];
+            });
+            downloadCSV(data, 'stock_data.csv', headers);
+        });
+
+        // Download sales data
+        document.getElementById('downloadSalesBtn').addEventListener('click', () => {
+            const headers = ['SL', 'Product Code', 'Product Name', 'Quantity Sold', 'Sale Amount', 'Date'];
+            const data = salesRecords.map((sale, index) => [
+                index + 1,
+                sale.code,
+                sale.name,
+                sale.quantity,
+                sale.saleAmount.toFixed(2),
+                sale.date
+            ]);
+            downloadCSV(data, 'sales_records.csv', headers);
+        });
+
+        // Add product
+        document.getElementById('addProductBtn').addEventListener('click', () => {
+            const product = {
+                code: document.getElementById('productCode').value,
+                name: document.getElementById('productName').value,
+                unit: document.getElementById('productUnit').value,
+                tp: parseFloat(document.getElementById('productTP').value) || 0,
+                saleableQty: parseInt(document.getElementById('saleableQty').value) || 0,
+                damageQty: parseInt(document.getElementById('damageQty').value) || 0,
+                freeQty: parseInt(document.getElementById('freeQty').value) || 0,
+            };
+
+            if (product.code && product.name && product.unit && product.tp > 0) {
+                products.push(product);
+                localStorage.setItem('products', JSON.stringify(products));
+                updateDashboard();
+                updateProductDropdown();
+                updateSellTable();
+                document.querySelectorAll('#addProduct input').forEach(input => input.value = '');
+                alert('Product added successfully!');
+            } else {
+                alert('Please fill all required fields with valid data.');
+            }
+        });
+
+        // Sell product
+        document.getElementById('sellProductBtn').addEventListener('click', () => {
+            const code = document.getElementById('sellProductCode').value;
+            const qty = parseInt(document.getElementById('sellQty').value) || 0;
+            const product = products.find(p => p.code === code);
+
+            if (product && qty > 0 && qty <= product.saleableQty) {
+                product.saleableQty -= qty;
+                const saleAmount = qty * product.tp;
+                const saleRecord = {
+                    code: product.code,
+                    name: product.name,
+                    quantity: qty,
+                    saleAmount: saleAmount,
+                    date: new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })
+                };
+                salesRecords.push(saleRecord);
+                localStorage.setItem('products', JSON.stringify(products));
+                localStorage.setItem('salesRecords', JSON.stringify(salesRecords));
+                updateDashboard();
+                updateProductDropdown();
+                updateSellTable();
+                updateSalesRecords();
+                document.getElementById('sellQty').value = '';
+                alert('Sale recorded successfully!');
+            } else {
+                alert('Invalid product or quantity. Ensure quantity is available.');
+            }
+        });
+
+        // Search product by code
+        document.getElementById('searchProductCode').addEventListener('input', (e) => {
+            updateSellTable(e.target.value);
+        });
+
+        // Open edit modal
+        function openEditModal(code) {
+            const product = products.find(p => p.code === code);
+            if (product) {
+                document.getElementById('editProductCode').value = product.code;
+                document.getElementById('editProductName').value = product.name;
+                document.getElementById('editProductUnit').value = product.unit;
+                document.getElementById('editProductTP').value = product.tp;
+                document.getElementById('editSaleableQty').value = product.saleableQty;
+                document.getElementById('editDamageQty').value = product.damageQty;
+                document.getElementById('editFreeQty').value = product.freeQty;
+                document.getElementById('editProductModal').classList.remove('hidden');
+            }
+        }
+
+        // Save edited product
+        document.getElementById('saveEditBtn').addEventListener('click', () => {
+            const code = document.getElementById('editProductCode').value;
+            const product = products.find(p => p.code === code);
+            if (product) {
+                product.name = document.getElementById('editProductName').value;
+                product.unit = document.getElementById('editProductUnit').value;
+                product.tp = parseFloat(document.getElementById('editProductTP').value) || 0;
+                product.saleableQty = parseInt(document.getElementById('editSaleableQty').value) || 0;
+                product.damageQty = parseInt(document.getElementById('editDamageQty').value) || 0;
+                product.freeQty = parseInt(document.getElementById('editFreeQty').value) || 0;
+
+                if (product.name && product.unit && product.tp > 0) {
+                    localStorage.setItem('products', JSON.stringify(products));
+                    updateDashboard();
+                    updateProductDropdown();
+                    updateSellTable();
+                    document.getElementById('editProductModal').classList.add('hidden');
+                    alert('Product updated successfully!');
+                } else {
+                    alert('Please fill all required fields with valid data.');
+                }
+            }
+        });
+
+        // Cancel edit
+        document.getElementById('cancelEditBtn').addEventListener('click', () => {
+            document.getElementById('editProductModal').classList.add('hidden');
+        });
+
+        // Delete product
+        function deleteProduct(code) {
+            if (confirm('Are you sure you want to delete this product?')) {
+                products = products.filter(p => p.code !== code);
+                localStorage.setItem('products', JSON.stringify(products));
+                updateDashboard();
+                updateProductDropdown();
+                updateSellTable();
+                alert('Product deleted successfully!');
+            }
+        }
+
+        // Update profile (username and password)
+        document.getElementById('updateProfileBtn').addEventListener('click', () => {
+            const newUsername = document.getElementById('newUsername').value;
+            const newPassword = document.getElementById('newPassword').value;
+
+            if (newUsername && newPassword) {
+                credentials.username = newUsername;
+                credentials.password = newPassword;
+                localStorage.setItem('credentials', JSON.stringify(credentials));
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newPassword').value = '';
+                alert('Profile updated successfully! Please log in again with new credentials.');
+                isLoggedIn = false;
+                checkLogin();
+            } else {
+                alert('Please enter both a username and password.');
+            }
+        });
+
+        // Initial check
+        checkLogin();
+    </script>
+</body>
+</html>
