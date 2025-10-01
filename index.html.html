@@ -1,0 +1,400 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script>```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Management Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f4f6f9;
+            font-family: Arial, sans-serif;
+        }
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .table-container {
+            margin-top: 20px;
+        }
+        .form-container {
+            margin-bottom: 20px;
+        }
+        .table th, .table td {
+            text-align: center;
+            vertical-align: middle;
+        }
+        .action-buttons button {
+            margin: 0 5px;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .success-message {
+            display: none;
+            margin-top: 10px;
+        }
+        .sale-btn {
+            position: relative;
+            background-color: #28a745;
+            color: white;
+            transition: transform 0.2s;
+        }
+        .sale-btn:hover {
+            transform: scale(1.1);
+        }
+        .sale-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background-color: #dc3545;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 0.75rem;
+        }
+        .low-stock {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .summary-card {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 8px;
+        }
+        .export-btn {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Stock Management System</a>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <h2 class="text-center mb-4">Stock Dashboard</h2>
+
+        <div class="summary-card">
+            <h5>Inventory Summary</h5>
+            <p>Total Saleable Stock: <span id="totalSaleable">0</span> units</p>
+            <p>Total Damage Stock: <span id="totalDamage">0</span> units</p>
+            <p>Total Free Stock: <span id="totalFree">0</span> units</p>
+        </div>
+
+        <div class="form-container">
+            <button class="btn btn-info export-btn" id="exportBtn">Export Inventory (CSV)</button>
+            <form id="stockForm" class="row g-3">
+                <div class="col-md-2">
+                    <input type="text" class="form-control" id="code" placeholder="Code" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="productName" placeholder="Product Name" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="text" class="form-control" id="unit" placeholder="Unit" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control" id="tp" placeholder="TP" step="0.01" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control" id="saleableQty" placeholder="Saleable Qty" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control" id="damageQty" placeholder="Damage Qty" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control" id="freeQty" placeholder="Free Qty" required>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100" id="submitBtn">Add Product</button>
+                </div>
+            </form>
+            <div id="successMessage" class="alert alert-success success-message">Product added/updated successfully!</div>
+        </div>
+
+        <div class="table-container">
+            <table id="stockTable" class="table table-striped table-bordered">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Code</th>
+                        <th>Product Name</th>
+                        <th>Unit</th>
+                        <th>TP</th>
+                        <th>Saleable Stock Qty.</th>
+                        <th>Damage Stock Qty.</th>
+                        <th>Free Qty.</th>
+                        <th>Saleable Amount</th>
+                        <th>Damage Amount</th>
+                        <th>Total Amount</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal fade" id="salesModal" tabindex="-1" aria-labelledby="salesModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="salesModalLabel">Record Sale</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="salesForm">
+                        <div class="mb-3">
+                            <label for="saleQty" class="form-label">Quantity Sold</label>
+                            <input type="number" class="form-control" id="saleQty" min="1" required>
+                            <div id="saleError" class="text-danger mt-2" style="display: none;"></div>
+                        </div>
+                        <input type="hidden" id="saleIndex">
+                    </form>
+                    <div id="saleSuccess" class="alert alert-success success-message">Sale recorded successfully!</div>
+                    <div class="mt-3">
+                        <h6>Sales History</h6>
+                        <ul id="salesHistory" class="list-group"></ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveSaleBtn">Save Sale</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            const table = $('#stockTable').DataTable({
+                paging: true,
+                searching: true,
+                ordering: true,
+                info: true,
+                responsive: true
+            });
+
+            let stockData = JSON.parse(localStorage.getItem('stockData')) || [
+                {"code": "ZST01", "productName": "Zinix Study Ballpen- Black", "unit": "Pcs", "tp": 4.35, "saleableQty": 33, "damageQty": 0, "freeQty": 0, "salesHistory": []},
+                {"code": "ZST02", "productName": "Zinix Study Ballpen-Red", "unit": "Pcs", "tp": 4.35, "saleableQty": 0, "damageQty": 0, "freeQty": 0, "salesHistory": []},
+                // Include all 386 items here (same as provided in previous response)
+                // Truncated for brevity; replace with full array from your previous input
+            ];
+
+            function calculateAmounts(saleableQty, damageQty, tp) {
+                const saleableAmount = (saleableQty * tp).toFixed(2);
+                const damageAmount = (damageQty * tp).toFixed(2);
+                const totalAmount = (parseFloat(saleableAmount) + parseFloat(damageAmount)).toFixed(2);
+                return { saleableAmount, damageAmount, totalAmount };
+            }
+
+            function updateSummary() {
+                const totalSaleable = stockData.reduce((sum, item) => sum + item.saleableQty, 0);
+                const totalDamage = stockData.reduce((sum, item) => sum + item.damageQty, 0);
+                const totalFree = stockData.reduce((sum, item) => sum + item.freeQty, 0);
+                $('#totalSaleable').text(totalSaleable);
+                $('#totalDamage').text(totalDamage);
+                $('#totalFree').text(totalFree);
+            }
+
+            function exportToCSV() {
+                let csv = 'Code,Product Name,Unit,TP,Saleable Qty,Damage Qty,Free Qty,Saleable Amount,Damage Amount,Total Amount\n';
+                stockData.forEach(item => {
+                    const { saleableAmount, damageAmount, totalAmount } = calculateAmounts(item.saleableQty, item.damageQty, item.tp);
+                    csv += `"${item.code}","${item.productName}","${item.unit}",${item.tp},${item.saleableQty},${item.damageQty},${item.freeQty},${saleableAmount},${damageAmount},${totalAmount}\n`;
+                });
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.setAttribute('href', url);
+                a.setAttribute('download', 'inventory_report.csv');
+                a.click();
+            }
+
+            function renderTable() {
+                table.clear();
+                stockData.forEach((item, index) => {
+                    const { saleableAmount, damageAmount, totalAmount } = calculateAmounts(item.saleableQty, item.damageQty, item.tp);
+                    const rowClass = item.saleableQty <= 5 && item.saleableQty > 0 ? 'low-stock' : '';
+                    table.row.add([
+                        item.code,
+                        item.productName,
+                        item.unit,
+                        item.tp,
+                        item.saleableQty,
+                        item.damageQty,
+                        item.freeQty,
+                        saleableAmount,
+                        damageAmount,
+                        totalAmount,
+                        `<div class="action-buttons">
+                            <button class="btn btn-sm btn-warning edit-btn" data-index="${index}" title="Edit"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-index="${index}" title="Delete"><i class="fas fa-trash"></i></button>
+                            <button class="btn btn-sm btn-success sale-btn" data-index="${index}" data-bs-toggle="modal" data-bs-target="#salesModal" title="Record Sale for ${item.saleableQty} available">
+                                <i class="fas fa-shopping-cart"></i>
+                                <span class="sale-badge">${item.saleableQty}</span>
+                            </button>
+                        </div>`
+                    ]).node().className = rowClass;
+                });
+                table.draw();
+                updateSummary();
+            }
+
+            renderTable();
+
+            $('#stockForm').on('submit', function (e) {
+                e.preventDefault();
+                const code = $('#code').val();
+                const productName = $('#productName').val();
+                const unit = $('#unit').val();
+                const tp = parseFloat($('#tp').val());
+                const saleableQty = parseInt($('#saleableQty').val()) || 0;
+                const damageQty = parseInt($('#damageQty').val()) || 0;
+                const freeQty = parseInt($('#freeQty').val()) || 0;
+
+                const editIndex = $('#submitBtn').data('editIndex');
+
+                if (editIndex !== undefined) {
+                    stockData[editIndex] = { code, productName, unit, tp, saleableQty, damageQty, freeQty, salesHistory: stockData[editIndex].salesHistory };
+                    $('#submitBtn').text('Add Product').removeData('editIndex');
+                    $('#successMessage').text('Product updated successfully!').show();
+                    setTimeout(() => $('#successMessage').hide(), 3000);
+                } else {
+                    stockData.push({ code, productName, unit, tp, saleableQty, damageQty, freeQty, salesHistory: [] });
+                    $('#successMessage').text('Product added successfully!').show();
+                    setTimeout(() => $('#successMessage').hide(), 3000);
+                }
+
+                localStorage.setItem('stockData', JSON.stringify(stockData));
+                renderTable();
+                $('#stockForm')[0].reset();
+            });
+
+            $('#stockTableBody').on('click', '.edit-btn', function () {
+                const index = $(this).data('index');
+                const item = stockData[index];
+                $('#code').val(item.code);
+                $('#productName').val(item.productName);
+                $('#unit').val(item.unit);
+                $('#tp').val(item.tp);
+                $('#saleableQty').val(item.saleableQty);
+                $('#damageQty').val(item.damageQty);
+                $('#freeQty').val(item.freeQty);
+                $('#submitBtn').text('Update Product').data('editIndex', index);
+            });
+
+            $('#stockTableBody').on('click', '.delete-btn', function () {
+                const index = $(this).data('index');
+                stockData.splice(index, 1);
+                localStorage.setItem('stockData', JSON.stringify(stockData));
+                renderTable();
+            });
+
+            $('#stockTableBody').on('click', '.sale-btn', function () {
+                const index = $(this).data('index');
+                $('#saleIndex').val(index);
+                $('#saleQty').val('');
+                $('#saleError').hide();
+                $('#saleSuccess').hide();
+                $('#salesModalLabel').text(`Record Sale for ${stockData[index].productName}`);
+                const historyList = $('#salesHistory');
+                historyList.empty();
+                const salesHistory = stockData[index].salesHistory || [];
+                if (salesHistory.length === 0) {
+                    historyList.append('<li class="list-group-item">No sales recorded.</li>');
+                } else {
+                    salesHistory.forEach(sale => {
+                        historyList.append(`<li class="list-group-item">${sale.date}: ${sale.quantity} ${stockData[index].unit}(s) sold</li>`);
+                    });
+                }
+            });
+
+            $('#saveSaleBtn').on('click', function () {
+                const index = parseInt($('#saleIndex').val());
+                const saleQty = parseInt($('#saleQty').val());
+                const item = stockData[index];
+
+                if (isNaN(saleQty) || saleQty <= 0) {
+                    $('#saleError').text('Please enter a valid quantity (greater than 0).').show();
+                    return;
+                }
+                if (saleQty > item.saleableQty) {
+                    $('#saleError').text(`Sale quantity cannot exceed available saleable stock (${item.saleableQty}).`).show();
+                    return;
+                }
+
+                item.saleableQty -= saleQty;
+                const saleDate = new Date().toLocaleString();
+                item.salesHistory = item.salesHistory || [];
+                item.salesHistory.push({ date: saleDate, quantity: saleQty });
+
+                localStorage.setItem('stockData', JSON.stringify(stockData));
+                renderTable();
+                $('#saleSuccess').text(`Successfully recorded sale of ${saleQty} ${item.unit}(s).`).show();
+                setTimeout(() => {
+                    $('#saleSuccess').hide();
+                    $('#salesModal').modal('hide');
+                }, 2000);
+            });
+
+            $('#exportBtn').on('click', exportToCSV);
+        });
+    </script>
+</body>
+</html>
+```
